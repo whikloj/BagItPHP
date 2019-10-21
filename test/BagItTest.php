@@ -99,6 +99,7 @@ class BagItTest extends BagItTestCase
      * Test parsing bag version.
      * @group BagIt
      * @covers ::getBagInfo
+     * @covers ::parseBagInfo
      */
     public function testBagVersion()
     {
@@ -108,13 +109,95 @@ class BagItTest extends BagItTestCase
 
         $tmp2 = BagItUtils::tmpdir();
         mkdir($tmp2);
+        mkdir("{$tmp2}/data");
         $this->createBagItTxt($tmp2);
         $bag = new BagIt($tmp2);
+        $this->assertCount(0, $bag->getBagErrors());
         $newBagInfo = $bag->getBagInfo();
         $this->assertEquals(1, $newBagInfo['version_parts']['major']);
         $this->assertEquals(3, $newBagInfo['version_parts']['minor']);
 
         BagItUtils::rrmdir($tmp2);
+    }
+
+    /**
+     * Test a parser failure of the bag version, no decimal.
+     * @group BagIt
+     * @covers ::parseBagInfo
+     */
+    public function testBagVersionFailure1()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        mkdir("{$tmp}/data");
+        file_put_contents(
+            "{$tmp}/bagit.txt",
+            "BagIt-Version: 3\n" .
+            "Tag-File-Character-Encoding: ISO-8859-1\n"
+        );
+        $bag = new BagIt($tmp);
+        $this->assertCount(1, $bag->getBagErrors());
+        BagItUtils::rrmdir($tmp);
+    }
+
+    /**
+     * Test a parser failure of the bag version, no number after the decimal.
+     * @group BagIt
+     * @covers ::parseBagInfo
+     */
+    public function testBagVersionFailure2()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        mkdir("{$tmp}/data");
+        file_put_contents(
+            "{$tmp}/bagit.txt",
+            "BagIt-Version: 3.\n" .
+            "Tag-File-Character-Encoding: ISO-8859-1\n"
+        );
+        $bag = new BagIt($tmp);
+        $this->assertCount(1, $bag->getBagErrors());
+        BagItUtils::rrmdir($tmp);
+    }
+
+    /**
+     * Test a parser failure of the bag version, no number before the decimal.
+     * @group BagIt
+     * @covers ::parseBagInfo
+     */
+    public function testBagVersionFailure3()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        mkdir("{$tmp}/data");
+        file_put_contents(
+            "{$tmp}/bagit.txt",
+            "BagIt-Version: .3\n" .
+            "Tag-File-Character-Encoding: ISO-8859-1\n"
+        );
+        $bag = new BagIt($tmp);
+        $this->assertCount(1, $bag->getBagErrors());
+        BagItUtils::rrmdir($tmp);
+    }
+
+    /**
+     * Test a parser failure of the bag version, letters.
+     * @group BagIt
+     * @covers ::parseBagInfo
+     */
+    public function testBagVersionFailure4()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        mkdir("{$tmp}/data");
+        file_put_contents(
+            "{$tmp}/bagit.txt",
+            "BagIt-Version: a.b\n" .
+            "Tag-File-Character-Encoding: ISO-8859-1\n"
+        );
+        $bag = new BagIt($tmp);
+        $this->assertCount(1, $bag->getBagErrors());
+        BagItUtils::rrmdir($tmp);
     }
 
     /**
@@ -551,8 +634,9 @@ class BagItTest extends BagItTestCase
             "Source-organization: University of Virginia Alderman Library\n" .
             "Contact-name: Eric Rochester\n" .
             "payload-oxum: real big\n" .
-            "My-Metadata: This is some seriously stong information\n" .
-            "   that you must check out.\n"
+            "My-Metadata: This is some seriously strong information\n" .
+            "My-Metadata: Seriously, you really need to\n" .
+            "   check this out.\n"
         );
         $this->createBagItTxt($tmp2);
         $bag = new BagIt($tmp2, true);
@@ -560,7 +644,10 @@ class BagItTest extends BagItTestCase
         $this->assertCount(0, $errors);
         $this->assertTrue($bag->hasBagInfoData('My-Metadata'));
         $this->assertEquals(
-            "This is some seriously stong information that you must check out.",
+            [
+                "This is some seriously strong information",
+                "Seriously, you really need to check this out.",
+            ],
             $bag->getBagInfoData('My-Metadata')
         );
         BagItUtils::rrmdir($tmp2);
@@ -769,6 +856,7 @@ class BagItTest extends BagItTestCase
      * Another writing bag-info tags test.
      * @group BagIt
      * @covers ::setBagInfoData
+     * @covers ::writeBagInfo
      */
     public function testBagInfoWriteTagCase()
     {
@@ -1015,6 +1103,7 @@ class BagItTest extends BagItTestCase
      * Test that we save load errors and present them when we validate later in constructor.
      * @group BagIt
      * @covers ::__construct
+     * @covers ::validateBagInfo
      */
     public function testConstructorInvalidRepeatedFields()
     {
@@ -1036,6 +1125,40 @@ class BagItTest extends BagItTestCase
     }
 
     /**
+     * Test writing bagInfo arrays with multiple values.
+     * @group BagIt
+     * @covers ::__construct
+     * @covers ::writeBagInfo
+     */
+    public function testConstructorBagInfoArray()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        $bagInfo = [
+            'source-organization' => [
+                'University of Manitoba',
+                'Jared Whiklo',
+            ],
+            'Super-Great-Metadata' => 'Is what I want',
+        ];
+        $bag = new BagIt($tmp, false, false, false, $bagInfo);
+        $this->assertTrue($bag->hasBagInfoData('source-organization'));
+        $this->assertTrue($bag->hasBagInfoData('Source-Organization'));
+        $this->assertTrue($bag->hasBagInfoData('Super-Great-Metadata'));
+        $this->assertFalse($bag->hasBagInfoData('super-great-metadata'));
+        $bag->update();
+
+        $this->assertEquals(
+            "Source-Organization: University of Manitoba\n" .
+            "Source-Organization: Jared Whiklo\n" .
+            "Super-Great-Metadata: Is what I want\n",
+            file_get_contents("{$bag->getBagDirectory()}/bag-info.txt")
+        );
+
+        BagItUtils::rrmdir($tmp);
+    }
+
+    /**
      * Test disabling extended bag creation.
      * @group BagIt
      * @covers ::createBag
@@ -1052,6 +1175,26 @@ class BagItTest extends BagItTestCase
         $this->assertFalse(is_file($tmp . '/bag-info.txt'));
         $this->assertFalse(is_file($tmp . '/fetch.txt'));
         $this->assertFalse(is_file($tmp . '/tagmanifest-sha512.txt'));
+
+        BagItUtils::rrmdir($tmp);
+    }
+
+
+    /**
+     * Test creating an extended bag and initializing bagInfoData.
+     * @group BagIt
+     * @covers ::createBag
+     * @covers ::createExtendedBag
+     * @covers ::ensureBagInfoData
+     *
+     */
+    public function testEnsureBagInfo()
+    {
+        $tmp = BagItUtils::tmpdir();
+        new BagIt($tmp, false, true);
+        $this->assertTrue(is_file($tmp . '/bag-info.txt'));
+        $this->assertFalse(is_file($tmp . '/fetch.txt'));
+        $this->assertTrue(is_file($tmp . '/tagmanifest-sha512.txt'));
 
         BagItUtils::rrmdir($tmp);
     }
@@ -1193,6 +1336,24 @@ class BagItTest extends BagItTestCase
     }
 
     /**
+     * Test constructing from a directory.
+     * @group BagIt
+     * @covers ::__construct
+     * @covers ::openBag
+     * @covers ::getCompressionType
+     * @covers ::checkCompressed
+     */
+    public function testConstructorDirType()
+    {
+        $bagDir = $this->prepareTestBagDirectory();
+        $bag = new BagIt($bagDir);
+
+        $this->assertNull($bag->getCompressionType());
+        $this->verifySampleBag($bag);
+        BagItUtils::rrmdir($bagDir);
+    }
+
+    /**
      * Test constructing from a zip file.
      * @group BagIt
      * @covers ::__construct
@@ -1227,6 +1388,27 @@ class BagItTest extends BagItTestCase
     }
 
     /**
+     * Test constructing directory without manifests.
+     * @group BagIt
+     * @covers ::__construct
+     * @covers ::openBag
+     * @covers ::checkCompressed
+     * @covers ::getCompressionType
+     */
+    public function testOpenBagNoManifests()
+    {
+        $bagDir = $this->prepareTestBagDirectory();
+        if (file_exists("{$bagDir}/manifest-sha1.txt")) {
+            unlink("{$bagDir}/manifest-sha1.txt");
+        }
+        $bag = new BagIt($bagDir);
+        $this->assertCount(0, $bag->getBagErrors());
+        $this->assertFalse($bag->isCompressed());
+        $this->assertFileExists("{$bagDir}/manifest-sha512.txt");
+        BagItUtils::rrmdir($bagDir);
+    }
+
+    /**
      * Test base bag is valid.
      * @group BagIt
      * @covers ::isValid
@@ -1239,6 +1421,7 @@ class BagItTest extends BagItTestCase
     /**
      * Test base bag is extended and we can create one without the extension.
      * @group BagIt
+     * @covers ::isExtended
      */
     public function testIsExtended()
     {
@@ -1397,6 +1580,32 @@ class BagItTest extends BagItTestCase
         $this->assertArrayEquals($this->validHashAlgos, $this->bag->getHashEncodings());
     }
 
+    /**
+     * Test adding all possible hash encodings and checking for them.
+     * @group BagIt
+     * @covers ::checkSupportedHash
+     * @covers ::hasHashEncoding
+     */
+    public function testAddAllHasHashEncodings()
+    {
+        foreach ($this->validHashAlgos as $hash) {
+            $this->bag->addHashEncoding($hash);
+        }
+        foreach ($this->validHashAlgos as $algo) {
+            $this->assertTrue($this->bag->hasHashEncoding($algo));
+            if (count($this->bag->getHashEncodings()) > 1) {
+                $this->bag->removeHashEncoding($algo);
+                $this->assertFalse($this->bag->hasHashEncoding($algo));
+            }
+        }
+        $this->assertCount(1, $this->bag->getHashEncodings());
+        $last_algorithm = $this->bag->getHashEncodings()[0];
+        if ('sha512' !== $last_algorithm) {
+            // Reset the bag to only sha512.
+            $this->bag->addHashEncoding('sha512');
+            $this->bag->removeHashEncoding($last_algorithm);
+        }
+    }
 
     /**
      * Test adding an invalid hash encoding algorithm.

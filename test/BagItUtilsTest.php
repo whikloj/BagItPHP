@@ -556,6 +556,34 @@ class BagItUtilsTest extends BagItTestCase
     }
 
     /**
+     * Test parse version string which has no number on one side of the decimal point.
+     * @group BagItUtils
+     * @covers ::parseVersionString
+     */
+    public function testParseVersionStringInvalid1()
+    {
+        $data =
+            "BagIt-Version: 3.\n" .
+            "Tag-File-Character-Encoding: UTF-8\n";
+        $versions = BagItUtils::parseVersionString($data);
+        $this->assertNull($versions);
+    }
+
+    /**
+     * Test parse version string which has no number on one side of the decimal point.
+     * @group BagItUtils
+     * @covers ::parseVersionString
+     */
+    public function testParseVersionStringInvalid2()
+    {
+        $data =
+            "BagIt-Version: .9\n" .
+            "Tag-File-Character-Encoding: UTF-8\n";
+        $versions = BagItUtils::parseVersionString($data);
+        $this->assertNull($versions);
+    }
+
+    /**
      * @group BagItUtils
      * @covers ::parseEncodingString
      */
@@ -655,36 +683,44 @@ class BagItUtilsTest extends BagItTestCase
     }
 
     /**
-     * @expectedException \ErrorException
+     * Test compressing a directory to a zip.
      * @group BagItUtils
-     * @covers ::uncompressBag
+     * @covers ::compressBag
      */
-    public function testUncompressBagError()
+    public function testCompressBagZip()
     {
-        BagItUtils::uncompressBag(__DIR__);
+        $bagDir = $this->prepareTestBagDirectory();
+        $tmp2 = BagItUtils::tmpdir();
+        mkdir($tmp2);
+        $destination = "{$tmp2}/zipit.zip";
+
+        $this->assertFileNotExists($destination);
+        BagItUtils::compressBag($bagDir, $destination, 'zip');
+        $this->assertFileExists($destination);
+
+        BagItUtils::rrmdir($bagDir);
+        BagItUtils::rrmdir($tmp2);
     }
 
-    /* TODO: Fix these so that they're testing correctly.
-    public function testBagIt_compressBagZip()
-    {
-        $this->_clearTagManifest();
-
-        $output = tmpdir() . '.zip';
-        BagIt_compressBag(__DIR__ . '/TestBag', $output, 'zip');
-
-        $this->assertFileEquals(__DIR__ . '/TestBag.zip', $output);
-    }
-
-    public function testBagIt_compressBagTar()
-    {
-        $this->_clearTagManifest();
-
-        $output = tmpdir() . '.tgz';
-        BagIt_compressBag(__DIR__ . '/TestBag', $output, 'tgz');
-
-        $this->assertFileEquals(__DIR__ . '/TestBag.tgz', $output);
-    }
+    /**
+     * Test compressing a directory to a tgz.
+     * @group BagItUtils
+     * @covers ::compressBag
      */
+    public function testCompressBagTgz()
+    {
+        $bagDir = $this->prepareTestBagDirectory();
+        $tmp2 = BagItUtils::tmpdir();
+        mkdir($tmp2);
+        $destination = "{$tmp2}/tarit.tgz";
+
+        $this->assertFileNotExists($destination);
+        BagItUtils::compressBag($bagDir, $destination, 'tgz');
+        $this->assertFileExists($destination);
+
+        BagItUtils::rrmdir($bagDir);
+        BagItUtils::rrmdir($tmp2);
+    }
 
     /**
      * @group BagItUtils
@@ -748,5 +784,32 @@ class BagItUtilsTest extends BagItTestCase
         BagItUtils::checkForNonRepeatableBagInfoFields('source-organization', $bagInfo);
         BagItUtils::checkForNonRepeatableBagInfoFields('My-ID', $bagInfo);
         BagItUtils::checkForNonRepeatableBagInfoFields('payload-oxum', $bagInfo);
+    }
+
+    /**
+     * Test getting values into an array for multiple values in the same key.
+     * @group BagItUtils
+     * @covers ::getAccumulatedValue
+     */
+    public function testGetAccumulatedValue()
+    {
+        $initial = [];
+        $first = BagItUtils::getAccumulatedValue($initial, 'Contact-Name', 'Neil Armstrong');
+        $this->assertEquals('Neil Armstrong', $first);
+
+        $initial = [
+            'Contact-Name' => 'Neil Armstrong',
+        ];
+        $second = BagItUtils::getAccumulatedValue($initial, 'Contact-Name', 'Sally Ride');
+        $this->assertArrayEquals(['Neil Armstrong', 'Sally Ride'], $second);
+
+        $initial = [
+            'Contact-Name' => [
+                'Neil Armstrong',
+                'Sally Ride',
+            ],
+        ];
+        $third = BagItUtils::getAccumulatedValue($initial, 'Contact-Name', 'Scott Glenn');
+        $this->assertArrayEquals(['Neil Armstrong', 'Sally Ride', 'Scott Glenn'], $third);
     }
 }

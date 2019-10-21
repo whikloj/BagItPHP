@@ -361,9 +361,6 @@ class BagItUtils
         if ($success) {
             $major=(int)$matches[1];
             $minor=(int)$matches[2];
-            if ($major === null || $minor === null) {
-                throw new BagItException("Invalid bagit version: '{$matches[0]}'.");
-            }
             return array('major'=>$major, 'minor'=>$minor);
         }
 

@@ -329,6 +329,7 @@ class BagIt
      * Use getHashEncodings() for an array of all encodings instead.
      *
      * @return string The bag's checksum encoding scheme.
+     * @codeCoverageIgnore
      */
     public function getHashEncoding()
     {
@@ -852,25 +853,20 @@ class BagIt
         if (count($files) > 0) {
             $bagdir = $this->bagDirectory;
             $manifestFiles = BagItUtils::findAllByPattern("$bagdir/manifest-*.txt");
-            try {
-                if (count($manifestFiles) == 0) {
-                    // Set a default.
-                    $manifestFiles = array("{$bagdir}/manifest-" . self::DEFAULT_HASH_ALGORITHM . '.txt');
-                }
-                foreach ($manifestFiles as $manifestFile) {
-                    $hash = $this->determineHashFromFilename($manifestFile);
-                    $this->manifest[$hash] = new BagItManifest(
-                        $manifestFile,
-                        $this->bagDirectory . '/',
-                        $this->tagFileEncoding
-                    );
-                }
-            } catch (\Exception $exc) {
-                array_push(
-                    $this->bagErrors,
-                    array('manifest', "Error reading $manifestFile.")
+
+            if (count($manifestFiles) == 0) {
+                // Set a default.
+                $manifestFiles = array("{$bagdir}/manifest-" . self::DEFAULT_HASH_ALGORITHM . '.txt');
+            }
+            foreach ($manifestFiles as $manifestFile) {
+                $hash = $this->determineHashFromFilename($manifestFile);
+                $this->manifest[$hash] = new BagItManifest(
+                    $manifestFile,
+                    $this->bagDirectory . '/',
+                    $this->tagFileEncoding
                 );
             }
+
 
             if ($this->isExtended()) {
                 $manifestFiles = BagItUtils::findAllByPattern("$bagdir/tagmanifest-*.txt");
@@ -890,17 +886,10 @@ class BagIt
                     );
                 }
 
-                try {
-                    $this->fetch = new BagItFetch(
-                        "{$this->bagDirectory}/fetch.txt",
-                        $this->tagFileEncoding
-                    );
-                } catch (\Exception $exc) {
-                    array_push(
-                        $this->bagErrors,
-                        array('fetch', 'Error reading fetch file.')
-                    );
-                }
+                $this->fetch = new BagItFetch(
+                    "{$this->bagDirectory}/fetch.txt",
+                    $this->tagFileEncoding
+                );
 
                 $this->bagInfoFile = "{$this->bagDirectory}/bag-info.txt";
                 $this->readBagInfo();
@@ -979,9 +968,7 @@ class BagIt
 
             $this->bagInfoFile = $this->bagDirectory . '/bag-info.txt';
             touch($this->bagInfoFile);
-            if (is_null($this->bagInfoData)) {
-                $this->bagInfoData = array();
-            }
+            $this->ensureBagInfoData();
         }
     }
 
@@ -989,22 +976,12 @@ class BagIt
      * This reads the bag-info.txt file into an array dictionary.
      *
      * @return void
-     *
-     * @throws \ScholarsLab\BagIt\BagItException when the bag-info is not valid.
      */
     private function readBagInfo()
     {
         if (file_exists($this->bagInfoFile)) {
-            try {
-                $lines=BagItUtils::readLines($this->bagInfoFile, $this->tagFileEncoding);
-                $this->bagInfoData=$this->parseBagInfo($lines);
-            } catch (BagItException $exc) {
-                array_push(
-                    $this->bagErrors,
-                    array('baginfo', 'Error reading bag info file.')
-                );
-                throw $exc;
-            }
+            $lines=BagItUtils::readLines($this->bagInfoFile, $this->tagFileEncoding);
+            $this->bagInfoData=$this->parseBagInfo($lines);
         }
     }
 
@@ -1191,8 +1168,6 @@ class BagIt
      * @param array $lines An array of lines from the file.
      *
      * @return array The parsed bag-info data.
-     *
-     * @throws \ScholarsLab\BagIt\BagItException when non-repeatable field is set twice.
      */
     private function parseBagInfo($lines)
     {
