@@ -1221,7 +1221,10 @@ class BagIt
                     try {
                         BagItUtils::checkForNonRepeatableBagInfoFields($key, $bagInfo);
                     } catch (BagItException $e) {
-                        $errors[] = $e->getMessage();
+                        $errors[] = [
+                            'bag-info',
+                            $e->getMessage(),
+                        ];
                     }
                     $prevKey=$key;
                     $bagInfo[$prevKey]=BagItUtils::getAccumulatedValue(

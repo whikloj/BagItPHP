@@ -537,6 +537,66 @@ class BagItTest extends BagItTestCase
     }
 
     /**
+     * Test that wrapping of fields is handled appropriately.
+     * @group BagIt
+     * @covers ::parseBagInfo
+     */
+    public function testParseBagInfoWrappedFieldSpaces()
+    {
+        $tmp2 = BagItUtils::tmpdir();
+        mkdir($tmp2);
+        mkdir("{$tmp2}/data");
+        file_put_contents(
+            $tmp2 . "/bag-info.txt",
+            "Source-organization: University of Virginia Alderman Library\n" .
+            "Contact-name: Eric Rochester\n" .
+            "payload-oxum: real big\n" .
+            "My-Metadata: This is some seriously stong information\n" .
+            "   that you must check out.\n"
+        );
+        $this->createBagItTxt($tmp2);
+        $bag = new BagIt($tmp2, true);
+        $errors = $bag->getBagErrors();
+        $this->assertCount(0, $errors);
+        $this->assertTrue($bag->hasBagInfoData('My-Metadata'));
+        $this->assertEquals(
+            "This is some seriously stong information that you must check out.",
+            $bag->getBagInfoData('My-Metadata')
+        );
+        BagItUtils::rrmdir($tmp2);
+    }
+
+    /**
+     * Test that wrapping of fields is handled appropriately.
+     * @group BagIt
+     * @covers ::parseBagInfo
+     */
+    public function testParseBagInfoWrappedFieldTab()
+    {
+        $tmp2 = BagItUtils::tmpdir();
+        mkdir($tmp2);
+        mkdir("{$tmp2}/data");
+        file_put_contents(
+            $tmp2 . "/bag-info.txt",
+            "Source-organization: University of Virginia Alderman Library\n" .
+            "Contact-name: Eric Rochester\n" .
+            "payload-oxum: real big\n" .
+            "My-Metadata: This is some seriously stong information\n" .
+            "\tthat you must check out.\n"
+        );
+        $this->createBagItTxt($tmp2);
+        $bag = new BagIt($tmp2, true);
+        $errors = $bag->getBagErrors();
+        $this->assertCount(0, $errors);
+        $this->assertTrue($bag->hasBagInfoData('My-Metadata'));
+        $this->assertEquals(
+            "This is some seriously stong information that you must check out.",
+            $bag->getBagInfoData('My-Metadata')
+        );
+        BagItUtils::rrmdir($tmp2);
+    }
+
+    /**
      * Test clearing bag-info.txt values.
      * @group BagIt
      * @covers ::getBagInfoData
@@ -926,6 +986,53 @@ class BagItTest extends BagItTestCase
         $this->assertGreaterThan(0, count($bag->getBagErrors()));
 
         BagItUtils::rrmdir($tmp);
+    }
+
+    /**
+     * Test cleaning up provided BagInfo arrays in constructor.
+     * @group BagIt
+     * @covers ::__construct
+     * @covers ::cleanUpConstructorBagInfo
+     */
+    public function testConstructorBagInfo()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        $bagInfo = [
+            'source-organization' => 'University of Manitoba',
+            'Super-Great-Metadata' => 'Is what I want',
+        ];
+        $bag = new BagIt($tmp, false, false, false, $bagInfo);
+        $this->assertTrue($bag->hasBagInfoData('source-organization'));
+        $this->assertTrue($bag->hasBagInfoData('Source-Organization'));
+        $this->assertTrue($bag->hasBagInfoData('Super-Great-Metadata'));
+        $this->assertFalse($bag->hasBagInfoData('super-great-metadata'));
+
+        BagItUtils::rrmdir($tmp);
+    }
+
+    /**
+     * Test that we save load errors and present them when we validate later in constructor.
+     * @group BagIt
+     * @covers ::__construct
+     */
+    public function testConstructorInvalidRepeatedFields()
+    {
+        $tmp = BagItUtils::tmpdir();
+        mkdir($tmp);
+        mkdir("{$tmp}/data");
+        $this->createBagItTxt($tmp);
+        file_put_contents(
+            "$tmp/bag-info.txt",
+            "Source-organization: University of Virginia Alderman Library\n" .
+            "Contact-name: Eric Rochester\n" .
+            "Bag-size: very, very small\n" .
+            "Other-metadata: stuff\n" .
+            "Payload-Oxum: 0x0038\n" .
+            "payload-oxum: 123GB\n"
+        );
+        $bag = new BagIt($tmp, true);
+        $this->assertCount(1, $bag->getBagErrors());
     }
 
     /**
