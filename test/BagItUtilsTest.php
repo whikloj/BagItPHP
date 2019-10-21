@@ -711,4 +711,42 @@ class BagItUtilsTest extends BagItTestCase
         $this->assertEquals('not-here', $errors[0][0]);
         $this->assertEquals('not-here does not exist.', $errors[0][1]);
     }
+
+    /**
+     * Test for not repeating non-repeatable fields.
+     * @group BagItUtils
+     * @covers ::checkForNonRepeatableBagInfoFields
+     * @covers ::arrayKeyExistsNoCase
+     */
+    public function testNonRepeatableFieldsSuccess()
+    {
+        $bagInfo = [
+            'Source-organization' => 'Some place',
+            'Contact-name' => 'Jim Smith',
+            'Contact-email' => 'jsmith@noreply.com',
+        ];
+        BagItUtils::checkForNonRepeatableBagInfoFields('source-organization', $bagInfo);
+        BagItUtils::checkForNonRepeatableBagInfoFields('My-ID', $bagInfo);
+        BagItUtils::checkForNonRepeatableBagInfoFields('payload-oxum', $bagInfo);
+    }
+
+    /**
+     * Test for not repeating non-repeatable fields.
+     * @group BagItUtils
+     * @covers ::checkForNonRepeatableBagInfoFields
+     * @covers ::arrayKeyExistsNoCase
+     * @expectedException \ScholarsLab\BagIt\BagItException
+     */
+    public function testNonRepeatableFieldsFailure()
+    {
+        $bagInfo = [
+            'Source-organization' => 'Some place',
+            'Contact-name' => 'Jim Smith',
+            'Contact-email' => 'jsmith@noreply.com',
+            'Payload-oxum' => '123456',
+        ];
+        BagItUtils::checkForNonRepeatableBagInfoFields('source-organization', $bagInfo);
+        BagItUtils::checkForNonRepeatableBagInfoFields('My-ID', $bagInfo);
+        BagItUtils::checkForNonRepeatableBagInfoFields('payload-oxum', $bagInfo);
+    }
 }
