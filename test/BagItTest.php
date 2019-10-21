@@ -234,8 +234,8 @@ class BagItTest extends BagItTestCase
         $this->assertTrue($bag->hasBagInfoData("Source-organization"));
         $this->assertTrue($bag->hasBagInfoData("Contact-name"));
         $this->assertTrue($bag->hasBagInfoData("Bag-size"));
-        $this->assertFalse($bag->hasBagInfoData("bag-size"));
-        $this->assertFalse($bag->hasBagInfoData("BAG-SIZE"));
+        $this->assertTrue($bag->hasBagInfoData("bag-size"));
+        $this->assertTrue($bag->hasBagInfoData("BAG-SIZE"));
         $this->assertFalse($bag->hasBagInfoData("bag-date"));
 
         BagItUtils::rrmdir($tmp2);
@@ -391,7 +391,6 @@ class BagItTest extends BagItTestCase
      * Ensure we can't set non-repeatable fields.
      * @group BagIt
      * @covers ::setBagInfoData
-     * @covers ::checkForNonRepeatableBagInfoFields
      * @expectedException \ScholarsLab\BagIt\BagItException
      */
     public function testSetNonRepeatableFieldsTwice()
@@ -416,7 +415,6 @@ class BagItTest extends BagItTestCase
      * Ensure we can't set non-repeatable fields if it loaded from the file.
      * @group BagIt
      * @covers ::setBagInfoData
-     * @covers ::checkForNonRepeatableBagInfoFields
      * @expectedException \ScholarsLab\BagIt\BagItException
      */
     public function testSetNonRepeatableFieldsTwiceFromFile()
@@ -440,7 +438,6 @@ class BagItTest extends BagItTestCase
      * Ensure we can't set non-repeatable fields case insensitive.
      * @group BagIt
      * @covers ::setBagInfoData
-     * @covers ::checkForNonRepeatableBagInfoFields
      * @expectedException \ScholarsLab\BagIt\BagItException
      */
     public function testSetNonRepeatableFieldsTwiceCase()
@@ -465,7 +462,7 @@ class BagItTest extends BagItTestCase
      * Ensure we can't set non-repeatable fields.
      * @group BagIt
      * @covers ::setBagInfoData
-     * @covers ::checkForNonRepeatableBagInfoFields
+     * @covers ::parseBagInfo
      * @expectedException \ScholarsLab\BagIt\BagItException
      */
     public function testSetNonRepeatableFieldsTwiceCaseFromFile()
@@ -490,6 +487,7 @@ class BagItTest extends BagItTestCase
      * @group BagIt
      * @covers ::validate
      * @covers ::validateBagInfo
+     * @covers ::parseBagInfo
      */
     public function testLoadInvalidBagInfoValidate()
     {
@@ -506,9 +504,9 @@ class BagItTest extends BagItTestCase
         mkdir("$tmp2/data");
         $bag = new BagIt($tmp2);
         $errors = $bag->getBagErrors();
-        $this->assertCount(0, $errors);
-        $errors = $bag->validate();
         $this->assertCount(1, $errors);
+        $errors = $bag->validate();
+        $this->assertCount(0, $errors);
         BagItUtils::rrmdir($tmp2);
     }
 
@@ -517,6 +515,7 @@ class BagItTest extends BagItTestCase
      * @group BagIt
      * @covers ::validate
      * @covers ::validateBagInfo
+     * @covers ::parseBagInfo
      */
     public function testLoadInvalidBagInfoValidateOnOpen()
     {
@@ -592,7 +591,7 @@ class BagItTest extends BagItTestCase
         $bag = new BagIt($tmp2);
         $keys = $bag->getBagInfoKeys();
         sort($keys);
-        $expected = array('Bag-size', 'Contact-name', 'DC-Author', 'Source-organization');
+        $expected = array('Bag-Size', 'Contact-Name', 'DC-Author', 'Source-Organization');
         $this->assertEquals($expected, $keys);
 
         $this->assertTrue($bag->hasBagInfoData('DC-Author'));
@@ -608,6 +607,7 @@ class BagItTest extends BagItTestCase
      * Test bag-info updates to file.
      * @group BagIt
      * @covers ::setBagInfoData
+     * @covers ::parseBagInfo
      * @covers ::update
      */
     public function testBagInfoDuplicateDataWrite()
@@ -638,9 +638,9 @@ class BagItTest extends BagItTestCase
         $bag->update();
 
         $this->assertEquals(
-            "Source-organization: University of Virginia Alderman Library\n" .
-            "Contact-name: Eric Rochester\n" .
-            "Bag-size: very, very small\n" .
+            "Source-Organization: University of Virginia Alderman Library\n" .
+            "Contact-Name: Eric Rochester\n" .
+            "Bag-Size: very, very small\n" .
             "DC-Author: Me\n" .
             "DC-Author: Myself\n" .
             "DC-Author: The other\n" .
@@ -733,9 +733,9 @@ class BagItTest extends BagItTestCase
         $bag->update();
 
         $this->assertEquals(
-            "Source-organization: University of Virginia Alderman Library\n" .
-            "Contact-name: Eric Rochester\n" .
-            "Bag-size: very, very small\n" .
+            "Source-Organization: University of Virginia Alderman Library\n" .
+            "Contact-Name: Eric Rochester\n" .
+            "Bag-Size: very, very small\n" .
             "First: This is the first tag value.\n" .
             "Second: This is the second tag value.\n",
             file_get_contents("$tmp2/bag-info.txt")
@@ -765,6 +765,7 @@ class BagItTest extends BagItTestCase
      * Test case sensitive matching on bag-info keys.
      * @group BagIt
      * @covers ::hasBagInfoData
+     * @covers ::parseBagInfo
      */
     public function testHasBagInfoData()
     {
@@ -777,27 +778,34 @@ class BagItTest extends BagItTestCase
             "$tmp2/bag-info.txt",
             "Source-organization: University of Virginia Alderman Library\n" .
             "Contact-name: Eric Rochester\n" .
-            "Bag-size: very, very small\n"
+            "Bag-size: very, very small\n" .
+            "Other-metadata: stuff\n"
         );
         $bag = new BagIt($tmp2);
 
         $this->assertTrue($bag->hasBagInfoData('Source-organization'));
-        $this->assertFalse($bag->hasBagInfoData('source-organization'));
-        $this->assertFalse($bag->hasBagInfoData('SOURCE-ORGANIZATION'));
-        $this->assertFalse($bag->hasBagInfoData('Source-Organization'));
-        $this->assertFalse($bag->hasBagInfoData('SoUrCe-oRgAnIzAtIoN'));
+        $this->assertTrue($bag->hasBagInfoData('source-organization'));
+        $this->assertTrue($bag->hasBagInfoData('SOURCE-ORGANIZATION'));
+        $this->assertTrue($bag->hasBagInfoData('Source-Organization'));
+        $this->assertTrue($bag->hasBagInfoData('SoUrCe-oRgAnIzAtIoN'));
 
         $this->assertTrue($bag->hasBagInfoData('Contact-name'));
-        $this->assertFalse($bag->hasBagInfoData('contact-name'));
-        $this->assertFalse($bag->hasBagInfoData('CONTACT-NAME'));
-        $this->assertFalse($bag->hasBagInfoData('Contact-Name'));
-        $this->assertFalse($bag->hasBagInfoData('CoNtAcT-NaMe'));
+        $this->assertTrue($bag->hasBagInfoData('contact-name'));
+        $this->assertTrue($bag->hasBagInfoData('CONTACT-NAME'));
+        $this->assertTrue($bag->hasBagInfoData('Contact-Name'));
+        $this->assertTrue($bag->hasBagInfoData('CoNtAcT-NaMe'));
 
         $this->assertTrue($bag->hasBagInfoData('Bag-size'));
-        $this->assertFalse($bag->hasBagInfoData('bag-size'));
-        $this->assertFalse($bag->hasBagInfoData('BAG-SIZE'));
-        $this->assertFalse($bag->hasBagInfoData('Bag-Size'));
-        $this->assertFalse($bag->hasBagInfoData('BaG-SiZe'));
+        $this->assertTrue($bag->hasBagInfoData('bag-size'));
+        $this->assertTrue($bag->hasBagInfoData('BAG-SIZE'));
+        $this->assertTrue($bag->hasBagInfoData('Bag-Size'));
+        $this->assertTrue($bag->hasBagInfoData('BaG-SiZe'));
+
+        $this->assertTrue($bag->hasBagInfoData('Other-metadata'));
+        $this->assertFalse($bag->hasBagInfoData('other-metadata'));
+        $this->assertFalse($bag->hasBagInfoData('OTHER-METADATA'));
+        $this->assertFalse($bag->hasBagInfoData('Other-Metadata'));
+        $this->assertFalse($bag->hasBagInfoData('OtHeR-mEtAdAtA'));
 
         $this->assertFalse($bag->hasBagInfoData('copyright-date'));
         $this->assertFalse($bag->hasBagInfoData('other-metadata'));
@@ -810,6 +818,7 @@ class BagItTest extends BagItTestCase
      * Test case sensitive storage of bag-info values.
      * @group BagIt
      * @covers ::getBagInfoData
+     * @covers ::parseBagInfo
      */
     public function testGetBagInfoData()
     {
@@ -822,27 +831,32 @@ class BagItTest extends BagItTestCase
             "$tmp2/bag-info.txt",
             "Source-organization: University of Virginia Alderman Library\n" .
             "Contact-name: Eric Rochester\n" .
-            "Bag-size: very, very small\n"
+            "Bag-size: very, very small\n" .
+            "Other-metadata: stuff\n"
         );
         $bag = new BagIt($tmp2);
 
         $this->assertEquals('University of Virginia Alderman Library', $bag->getBagInfoData('Source-organization'));
-        $this->assertNotEquals('University of Virginia Alderman Library', $bag->getBagInfoData('source-organization'));
-        $this->assertNotEquals('University of Virginia Alderman Library', $bag->getBagInfoData('SOURCE-ORGANIZATION'));
-        $this->assertNotEquals('University of Virginia Alderman Library', $bag->getBagInfoData('Source-Organization'));
-        $this->assertNotEquals('University of Virginia Alderman Library', $bag->getBagInfoData('SoUrCe-oRgAnIzAtIoN'));
+        $this->assertEquals('University of Virginia Alderman Library', $bag->getBagInfoData('source-organization'));
+        $this->assertEquals('University of Virginia Alderman Library', $bag->getBagInfoData('SOURCE-ORGANIZATION'));
+        $this->assertEquals('University of Virginia Alderman Library', $bag->getBagInfoData('Source-Organization'));
+        $this->assertEquals('University of Virginia Alderman Library', $bag->getBagInfoData('SoUrCe-oRgAnIzAtIoN'));
 
         $this->assertEquals('Eric Rochester', $bag->getBagInfoData('Contact-name'));
-        $this->assertNotEquals('Eric Rochester', $bag->getBagInfoData('contact-name'));
-        $this->assertNotEquals('Eric Rochester', $bag->getBagInfoData('CONTACT-NAME'));
-        $this->assertNotEquals('Eric Rochester', $bag->getBagInfoData('Contact-Name'));
-        $this->assertNotEquals('Eric Rochester', $bag->getBagInfoData('CoNtAcT-NaMe'));
+        $this->assertEquals('Eric Rochester', $bag->getBagInfoData('contact-name'));
+        $this->assertEquals('Eric Rochester', $bag->getBagInfoData('CONTACT-NAME'));
+        $this->assertEquals('Eric Rochester', $bag->getBagInfoData('Contact-Name'));
+        $this->assertEquals('Eric Rochester', $bag->getBagInfoData('CoNtAcT-NaMe'));
 
         $this->assertEquals('very, very small', $bag->getBagInfoData('Bag-size'));
-        $this->assertNotEquals('very, very small', $bag->getBagInfoData('bag-size'));
-        $this->assertNotEquals('very, very small', $bag->getBagInfoData('BAG-SIZE'));
-        $this->assertNotEquals('very, very small', $bag->getBagInfoData('Bag-Size'));
-        $this->assertNotEquals('very, very small', $bag->getBagInfoData('BaG-SiZe'));
+        $this->assertEquals('very, very small', $bag->getBagInfoData('bag-size'));
+        $this->assertEquals('very, very small', $bag->getBagInfoData('BAG-SIZE'));
+        $this->assertEquals('very, very small', $bag->getBagInfoData('Bag-Size'));
+        $this->assertEquals('very, very small', $bag->getBagInfoData('BaG-SiZe'));
+
+        $this->assertEquals('stuff', $bag->getBagInfoData('Other-metadata'));
+        $this->assertNotEquals('stuff', $bag->getBagInfoData('OTHER-METADATA'));
+        $this->assertNull($bag->getBagInfoData('OTHER-METADATA'));
 
         $this->assertNull($bag->getBagInfoData('copyright-date'));
         $this->assertNull($bag->getBagInfoData('other-metadata'));

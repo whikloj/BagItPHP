@@ -703,63 +703,12 @@ class BagItUtilsTest extends BagItTestCase
      */
     public function testValidateExistsFail()
     {
-        $errors = array();
+        $errors=array();
         $this->assertFalse(
             BagItUtils::validateExists(__DIR__ . '/not-here', $errors)
         );
         $this->assertEquals(1, count($errors));
         $this->assertEquals('not-here', $errors[0][0]);
         $this->assertEquals('not-here does not exist.', $errors[0][1]);
-    }
-
-    /**
-     * @group BagItUtils
-     * @covers ::parseBagInfo
-     */
-    public function testParseBaseInfoEmptyLine()
-    {
-        $lines = array(
-            'some: here',
-            '',
-            'other: there'
-        );
-
-        $info = BagItUtils::parseBagInfo($lines);
-        $this->assertEquals('here', $info['some']);
-        $this->assertEquals('there', $info['other']);
-    }
-
-    /**
-     * @group BagItUtils
-     * @covers ::parseBagInfo
-     */
-    public function testParseBaseInfoContinued()
-    {
-        $lines = array(
-            'some: here',
-            ' and there',
-            'other: there',
-            "\tand here"
-        );
-
-        $info = BagItUtils::parseBagInfo($lines);
-        $this->assertEquals('here and there', $info['some']);
-        $this->assertEquals('there and here', $info['other']);
-    }
-
-    /**
-     * @group BagItUtils
-     * @covers ::parseBagInfo
-     */
-    public function testParseBaseInfoStandard()
-    {
-        $lines = array(
-            'some: here',
-            'other: there'
-        );
-
-        $info = BagItUtils::parseBagInfo($lines);
-        $this->assertEquals('here', $info['some']);
-        $this->assertEquals('there', $info['other']);
     }
 }

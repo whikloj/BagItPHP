@@ -166,33 +166,6 @@ class BagIt
         'minor' => 0,
     );
 
-    /**
-     * Bag-info fields that MUST not be repeated (in lowercase).
-     */
-    const BAG_INFO_MUST_NOT_REPEAT = array(
-        'payload-oxum'
-    );
-
-    /**
-     * Reserved element names for Bag-info fields.
-     */
-    const BAG_INFO_RESERVED_ELEMENTS = array(
-        'source-organization',
-        'organization-address',
-        'contact-name',
-        'contact-phone',
-        'contact-email',
-        'external-description',
-        'bagging-date',
-        'external-identifier',
-        'payload-oxum',
-        'bag-size',
-        'bag-group-identifier',
-        'bag-count',
-        'internal-sender-identifier',
-        'internal-sender-description',
-    );
-
     //}}}
 
     //{{{ Public Methods
@@ -235,6 +208,9 @@ class BagIt
         $this->tagManifest = array();
         $this->fetch = null;
         $this->bagInfoFile = null;
+        if (is_array($bagInfoData)) {
+            $bagInfoData = $this->cleanUpConstructorBagInfo($bagInfoData);
+        }
         $this->bagInfoData = $bagInfoData;
         $this->bagCompression = null;
         $this->bagErrors = array();
@@ -260,7 +236,15 @@ class BagIt
         }
 
         if ($validate) {
+            if (is_array($this->bagErrors) && count($this->bagErrors) > 0) {
+                // We have errors (probably from reading bag-info.txt, save them.
+                $errors = $this->bagErrors;
+            }
             $this->validate();
+            if (isset($errors)) {
+                // We have errors so merge them in.
+                $this->bagErrors = array_merge($this->bagErrors, $errors);
+            }
         }
     }
 
@@ -703,6 +687,7 @@ class BagIt
     public function hasBagInfoData($key, $caseinsensitive = false)
     {
         $this->ensureBagInfoData();
+        BagItUtils::adjustBagInfoKey($key);
         return ($caseinsensitive ? self::arrayKeyExistsNoCase($key, $this->bagInfoData) :
             array_key_exists($key, $this->bagInfoData));
     }
@@ -721,7 +706,8 @@ class BagIt
     public function setBagInfoData($key, $value)
     {
         $this->ensureBagInfoData();
-        $this->checkForNonRepeatableBagInfoFields($key);
+        BagItUtils::checkForNonRepeatableBagInfoFields($key, $this->bagInfoData);
+        BagItUtils::adjustBagInfoKey($key);
         $this->bagInfoData[$key] = BagItUtils::getAccumulatedValue(
             $this->bagInfoData,
             $key,
@@ -778,6 +764,7 @@ class BagIt
     public function getBagInfoData($key)
     {
         $this->ensureBagInfoData();
+        BagItUtils::adjustBagInfoKey($key);
         return array_key_exists($key, $this->bagInfoData) ? $this->bagInfoData[$key] : null;
     }
 
@@ -840,6 +827,7 @@ class BagIt
      *
      * @return void
      * @throws \ErrorException If trying to uncompress a non-compressed bag.
+     * @throws \ScholarsLab\BagIt\BagItException bag-info was not valid when reading it.
      */
     private function openBag()
     {
@@ -1001,17 +989,22 @@ class BagIt
      * This reads the bag-info.txt file into an array dictionary.
      *
      * @return void
+     *
+     * @throws \ScholarsLab\BagIt\BagItException when the bag-info is not valid.
      */
     private function readBagInfo()
     {
-        try {
-            $lines = BagItUtils::readLines($this->bagInfoFile, $this->tagFileEncoding);
-            $this->bagInfoData = BagItUtils::parseBagInfo($lines);
-        } catch (\Exception $exc) {
-            array_push(
-                $this->bagErrors,
-                array('baginfo', 'Error reading bag info file.')
-            );
+        if (file_exists($this->bagInfoFile)) {
+            try {
+                $lines=BagItUtils::readLines($this->bagInfoFile, $this->tagFileEncoding);
+                $this->bagInfoData=$this->parseBagInfo($lines);
+            } catch (BagItException $exc) {
+                array_push(
+                    $this->bagErrors,
+                    array('baginfo', 'Error reading bag info file.')
+                );
+                throw $exc;
+            }
         }
     }
 
@@ -1126,21 +1119,7 @@ class BagIt
         return in_array($hashAlgorithm, $this->validHashAlgorithms);
     }
 
-    /**
-     * Check that the key is not non-repeatable and already in the bagInfo.
-     *
-     * @param string $key The key being added.
-     *
-     * @return void
-     * @throws \ScholarsLab\BagIt\BagItException If the key is non-repeatable and already in the bagInfo.
-     */
-    private function checkForNonRepeatableBagInfoFields($key)
-    {
-        if (in_array(strtolower($key), self::BAG_INFO_MUST_NOT_REPEAT) &&
-            self::arrayKeyExistsNoCase($key, $this->bagInfoData)) {
-            throw new BagItException("You cannot add more than one instance of {$key} to the bag-info.txt");
-        }
-    }
+
 
     /**
      * Check for validity of bag-info fields. Adds errors to the $errors array.
@@ -1157,7 +1136,7 @@ class BagIt
             $item = strtolower($item);
         });
         $countBagInfoKeys = array_count_values($bagInfoKeys);
-        foreach (self::BAG_INFO_MUST_NOT_REPEAT as $key) {
+        foreach (BagItConstants::BAG_INFO_MUST_NOT_REPEAT as $key) {
             if (array_key_exists(strtolower($key), $countBagInfoKeys) && $countBagInfoKeys[$key] > 1) {
                 $errors[] = array(
                     "{$this->getBagDirectory()}/bag-info.txt",
@@ -1191,19 +1170,70 @@ class BagIt
     }
 
     /**
-     * Case-insensitive version of array_key_exists
+     * Adjust baginfo array from constructor to fix reserved element keys.
      *
-     * @param string $search The key to look for.
-     * @param array $map The associative array to search.
-     * @return bool True if the key exists regardless of case.
+     * @param array $bagInfo The incoming bagInfo array.
+     * @return array bagInfo with adjust reserved elements keys.
      */
-    private static function arrayKeyExistsNoCase($search, array $map)
+    private function cleanUpConstructorBagInfo(array $bagInfo)
     {
-        $keys = array_keys($map);
-        array_walk($keys, function (&$item) {
-            $item = strtolower($item);
-        });
-        return in_array(strtolower($search), $keys);
+        $newInfo = [];
+        foreach ($bagInfo as $key => $value) {
+            BagItUtils::adjustBagInfoKey($key);
+            $newInfo[$key] = $value;
+        }
+        return $newInfo;
+    }
+
+    /**
+     * Parse bag info file.
+     *
+     * @param array $lines An array of lines from the file.
+     *
+     * @return array The parsed bag-info data.
+     *
+     * @throws \ScholarsLab\BagIt\BagItException when non-repeatable field is set twice.
+     */
+    private function parseBagInfo($lines)
+    {
+        $bagInfo=array();
+        $errors = [];
+
+        $prevKey=null;
+        foreach ($lines as $line) {
+            if (strlen($line) <= 1) {
+                // Skip.
+            } else {
+                if ($line[0] == ' ' || $line[0] == "\t") {
+                    // Continued line.
+                    $val=$bagInfo[$prevKey];
+                    if (is_array($val)) {
+                        $val[count($val) - 1].=' ' . trim($line);
+                    } else {
+                        $val.=' ' . trim($line);
+                    }
+                    $bagInfo[$prevKey]=$val;
+                } else {
+                    list($key, $val)=preg_split('/:\s*/', $line, 2);
+                    $val = trim($val);
+                    $key = trim($key);
+                    BagItUtils::adjustBagInfoKey($key);
+                    try {
+                        BagItUtils::checkForNonRepeatableBagInfoFields($key, $bagInfo);
+                    } catch (BagItException $e) {
+                        $errors[] = $e->getMessage();
+                    }
+                    $prevKey=$key;
+                    $bagInfo[$prevKey]=BagItUtils::getAccumulatedValue(
+                        $bagInfo,
+                        $prevKey,
+                        $val
+                    );
+                }
+            }
+        }
+        $this->bagErrors = $errors;
+        return $bagInfo;
     }
 
     //}}}

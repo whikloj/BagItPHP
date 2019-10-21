@@ -309,6 +309,8 @@ class BagItUtils
      *
      * @return array An array triple of the version, the file encoding, and any
      * errors encountered.
+     *
+     * @throws \ScholarsLab\BagIt\BagItException if invalid bagit.txt version string.
      */
     public static function readBagItFile($filename)
     {
@@ -345,7 +347,7 @@ class BagItUtils
      * @return array A two-item array containing the version string as
      * integers. The keys for this array are 'major' and 'minor'.
      *
-     * @throws \Exception If non-numeric version string defined.
+     * @throws \ScholarsLab\BagIt\BagItException If non-numeric version string defined.
      */
     public static function parseVersionString($bagitFileData)
     {
@@ -360,7 +362,7 @@ class BagItUtils
             $major=(int)$matches[1];
             $minor=(int)$matches[2];
             if ($major === null || $minor === null) {
-                throw new \Exception("Invalid bagit version: '{$matches[0]}'.");
+                throw new BagItException("Invalid bagit version: '{$matches[0]}'.");
             }
             return array('major'=>$major, 'minor'=>$minor);
         }
@@ -493,47 +495,6 @@ class BagItUtils
     }
 
     /**
-     * Parse bag info file.
-     *
-     * @param array $lines An array of lines from the file.
-     *
-     * @return array The parsed bag-info data.
-     */
-    public static function parseBagInfo($lines)
-    {
-        $bagInfo=array();
-
-        $prevKey=null;
-        foreach ($lines as $line) {
-            if (strlen($line) <= 1) {
-                // Skip.
-            } else {
-                if ($line[0] == ' ' || $line[0] == "\t") {
-                    // Continued line.
-                    $val=$bagInfo[$prevKey];
-                    if (is_array($val)) {
-                        $val[count($val) - 1].=' ' . trim($line);
-                    } else {
-                        $val.=' ' . trim($line);
-                    }
-                    $bagInfo[$prevKey]=$val;
-                } else {
-                    list($key, $val)=preg_split('/:\s*/', $line, 2);
-                    $val=trim($val);
-                    $prevKey=$key;
-                    $bagInfo[$prevKey]=self::getAccumulatedValue(
-                        $bagInfo,
-                        $prevKey,
-                        $val
-                    );
-                }
-            }
-        }
-
-        return $bagInfo;
-    }
-
-    /**
      * This accumulates values into an array.
      *
      * If $key exists in the array, the new value is appended to the array
@@ -560,5 +521,53 @@ class BagItUtils
             $val=$pval;
         }
         return $val;
+    }
+
+    /**
+     * Alter the key for reserved element names.
+     *
+     * @param string $key The bag info key.
+     */
+    public static function adjustBagInfoKey(&$key)
+    {
+        $key = trim($key);
+        if (in_array(strtolower($key), array_keys(BagItConstants::BAG_INFO_RESERVED_ELEMENTS))) {
+            // Reserved elements use a consistent case.
+            $key = BagItConstants::BAG_INFO_RESERVED_ELEMENTS[strtolower($key)];
+        }
+    }
+
+    /**
+     * Check that the key is not non-repeatable and already in the bagInfo.
+     *
+     * @param string $key The key being added.
+     * @param array $map The bagInfo array to check.
+     *
+     * @return void
+     * @throws \ScholarsLab\BagIt\BagItException If the key is non-repeatable and already in the bagInfo.
+     */
+    public static function checkForNonRepeatableBagInfoFields($key, array $map)
+    {
+        if (in_array(strtolower($key), BagItConstants::BAG_INFO_MUST_NOT_REPEAT) &&
+            self::arrayKeyExistsNoCase($key, $map)) {
+            throw new BagItException("You cannot add more than one instance of {$key} to the bag-info.txt");
+        }
+    }
+
+
+    /**
+     * Case-insensitive version of array_key_exists
+     *
+     * @param string $search The key to look for.
+     * @param array $map The associative array to search.
+     * @return bool True if the key exists regardless of case.
+     */
+    private static function arrayKeyExistsNoCase($search, array $map)
+    {
+        $keys = array_keys($map);
+        array_walk($keys, function (&$item) {
+            $item = strtolower($item);
+        });
+        return in_array(strtolower($search), $keys);
     }
 }
